@@ -1,0 +1,5 @@
+"CFBundleDisplayName" = "KBK-CAM";
+"NSCameraUsageDescription" = "KBK-CAM utilise la caméra pour filmer et diffuser vos matchs.";
+"NSMicrophoneUsageDescription" = "KBK-CAM enregistre le son du match avec la vidéo.";
+"NSPhotoLibraryAddUsageDescription" = "KBK-CAM enregistre vos vidéos de match et temps forts dans Photos.";
+"NSLocalNetworkUsageDescription" = "KBK-CAM permet à un autre téléphone sur le même Wi-Fi de contrôler le score (télécommande).";

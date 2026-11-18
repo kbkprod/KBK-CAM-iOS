@@ -1,0 +1,5 @@
+"CFBundleDisplayName" = "KBK-CAM";
+"NSCameraUsageDescription" = "يستخدم KBK-CAM الكاميرا لتصوير مبارياتك وبثها مباشرة.";
+"NSMicrophoneUsageDescription" = "يسجّل KBK-CAM صوت المباراة مع الفيديو.";
+"NSPhotoLibraryAddUsageDescription" = "يحفظ KBK-CAM فيديوهات المباريات واللقطات في الصور.";
+"NSLocalNetworkUsageDescription" = "يتيح KBK-CAM لهاتف آخر على نفس شبكة Wi-Fi التحكم في النتيجة (التحكم عن بعد).";

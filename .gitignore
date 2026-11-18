@@ -1,0 +1,15 @@
+# Signing secrets — never commit or share
+keystore.properties
+*.jks
+*.keystore
+
+# Build output
+.gradle/
+build/
+app/build/
+local.properties
+
+# Xcode
+*.xcodeproj/
+DerivedData/
+*.ipa

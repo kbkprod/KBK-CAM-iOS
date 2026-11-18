@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>KBK-CAM Remote</title>
+<style>
+  :root { --bg:#0b1116; --card:#151d24; --line:rgba(255,255,255,.12); --text:#fff; --muted:#8fa0ac; --a:#2f80ed; --b:#f2994a; --red:#e8483b; --acc:#12a183; }
+  * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; user-select:none; }
+  body { margin:0; background:var(--bg); color:var(--text); font-family:system-ui,Roboto,"Noto Sans Arabic",sans-serif; padding:16px; }
+  header { display:flex; justify-content:space-between; align-items:center; margin-bottom:14px; }
+  h1 { font-size:18px; margin:0; letter-spacing:.5px; }
+  .live { font-size:13px; padding:4px 10px; border-radius:20px; background:var(--card); color:var(--muted); }
+  .live.on { background:var(--red); color:#fff; }
+  .board { background:var(--card); border:1px solid var(--line); border-radius:16px; padding:12px 14px; margin-bottom:14px; direction:ltr; }
+  .row { display:flex; align-items:center; gap:10px; padding:6px 0; font-size:20px; }
+  .row .name { flex:1; font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .row .sets { color:var(--muted); font-variant-numeric:tabular-nums; }
+  .row .pts { min-width:58px; text-align:center; background:var(--acc); border-radius:8px; padding:4px 8px; font-weight:700; }
+  .phase { color:var(--muted); font-size:13px; margin-top:4px; }
+  .big { display:grid; grid-template-columns:1fr 1fr; gap:12px; direction:ltr; }
+  button { font:inherit; color:var(--text); background:var(--card); border:1px solid var(--line); border-radius:16px; padding:0 10px; }
+  button:active { transform:scale(.97); }
+  .pt { height:150px; font-size:22px; font-weight:700; }
+  .pt.a { background:var(--a); border:none; } .pt.b { background:var(--b); border:none; }
+  .tools { display:grid; grid-template-columns:repeat(3,1fr); gap:10px; margin-top:12px; }
+  .tools button { height:58px; font-size:15px; }
+  .hl { background:#d7f205 !important; color:#111 !important; font-weight:700; }
+  .clock { display:flex; align-items:center; justify-content:center; gap:8px; margin-top:12px; direction:ltr;
+    background:var(--card); border:1px solid var(--line); border-radius:16px; padding:8px; }
+  .clock button { height:52px; min-width:56px; font-size:16px; font-weight:700; }
+  .clock .play { background:var(--acc); border:none; }
+  #clk { font:700 34px ui-monospace,monospace; min-width:120px; text-align:center; }
+  .err { color:#ffb3ad; font-size:13px; margin-top:10px; text-align:center; min-height:18px; }
+</style>
+</head>
+<body>
+<header><h1>KBK-CAM · <span data-t="remote">تحكم عن بعد</span></h1><span class="live" id="live">غير متصل</span></header>
+
+<div class="board">
+  <div class="row"><span class="name" id="nA">A</span><span class="sets" id="sA"></span><span class="pts" id="pA">0</span></div>
+  <div class="row"><span class="name" id="nB">B</span><span class="sets" id="sB"></span><span class="pts" id="pB">0</span></div>
+  <div class="phase" id="phase"></div>
+</div>
+
+<div class="big">
+  <button class="pt a" id="btnA" onclick="cmd('point','0')">+ A</button>
+  <button class="pt b" id="btnB" onclick="cmd('point','1')">+ B</button>
+</div>
+<div class="clock">
+  <button onclick="cmd('clockminus')">−10</button>
+  <button class="play" id="play" onclick="cmd('clock')">▶</button>
+  <span id="clk">00:00</span>
+  <button onclick="cmd('clockplus')">+10</button>
+  <button onclick="if(confirm(tr('reset')))cmd('clockreset')">⟲</button>
+</div>
+<div class="tools">
+  <button onclick="cmd('undo')" data-t="undo">↶ تراجع</button>
+  <button class="hl" onclick="cmd('highlight')" data-t="hl">★ لقطة</button>
+  <button onclick="cmd('period')" data-t="period">الفترة التالية</button>
+  <button onclick="cmd('minus','0')">− A</button>
+  <button onclick="location.reload()" data-t="reload">⟳ تحديث</button>
+  <button onclick="cmd('minus','1')">− B</button>
+</div>
+<div class="err" id="err"></div>
+
+<script>
+  const $ = id => document.getElementById(id);
+  const I18N = {
+    ar: { remote:'تحكم عن بعد', undo:'↶ تراجع', hl:'★ لقطة', period:'الفترة التالية', reload:'⟳ تحديث',
+          reset:'تصفير المؤقت؟', live:'مباشر', rec:'تسجيل', on:'متصل', off:'غير متصل', err:'تعذّر الاتصال بالكاميرا' },
+    fr: { remote:'Télécommande', undo:'↶ Annuler', hl:'★ Temps fort', period:'Période suivante', reload:'⟳ Actualiser',
+          reset:'Remettre le chrono à zéro ?', live:'DIRECT', rec:'REC', on:'Connecté', off:'Hors ligne', err:'Impossible de joindre la caméra' },
+    en: { remote:'Remote control', undo:'↶ Undo', hl:'★ Highlight', period:'Next period', reload:'⟳ Refresh',
+          reset:'Reset the clock?', live:'LIVE', rec:'REC', on:'Connected', off:'Offline', err:'Can\'t reach the camera' }
+  };
+  let lang = 'ar';
+  const tr = k => (I18N[lang] || I18N.ar)[k];
+  function applyLang(l) {
+    if (!I18N[l] || l === lang) return;
+    lang = l;
+    document.documentElement.lang = l;
+    document.documentElement.dir = l === 'ar' ? 'rtl' : 'ltr';
+    document.querySelectorAll('[data-t]').forEach(e => e.textContent = tr(e.dataset.t));
+  }
+  function render(s) {
+    if (!s || !s.nameA) return;
+    applyLang(s.lang);
+    $('nA').textContent = s.nameA; $('nB').textContent = s.nameB;
+    $('btnA').textContent = '+ ' + s.nameA; $('btnB').textContent = '+ ' + s.nameB;
+    $('pA').textContent = s.pA; $('pB').textContent = s.pB;
+    $('sA').textContent = s.setsA; $('sB').textContent = s.setsB;
+    $('phase').textContent = [s.sport, s.phase].filter(Boolean).join('  ·  ');
+    $('clk').textContent = s.clock || '00:00';
+    $('play').textContent = s.clockRunning ? '❚❚' : '▶';
+    const l = $('live');
+    l.textContent = s.live ? tr('live') : (s.rec ? tr('rec') : tr('on'));
+    l.classList.toggle('on', !!(s.live || s.rec));
+    $('err').textContent = s.msg || '';
+  }
+  async function cmd(c, t) {
+    try {
+      if (navigator.vibrate) navigator.vibrate(25);
+      const r = await fetch('/api/' + c + (t !== undefined ? '?t=' + t : ''));
+      render(await r.json());
+    } catch (e) { $('err').textContent = tr('err'); $('live').textContent = tr('off'); }
+  }
+  setInterval(() => cmd('state'), 1500);
+  cmd('state');
+</script>
+</body>
+</html>
