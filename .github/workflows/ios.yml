@@ -1,0 +1,98 @@
+# KBK-CAM iOS — builds on a GitHub-hosted Mac (no Mac needed on your side).
+#
+#  * job "build"   : on every push to main → unsigned .ipa artifact (checks that the app compiles).
+#  * job "appstore": run manually (Actions → iOS build → Run workflow → upload_to_app_store = true)
+#                    → signed build uploaded to App Store Connect / TestFlight.
+#    Needs these repository secrets (Settings → Secrets and variables → Actions):
+#      APPLE_TEAM_ID      your 10-character Apple Developer Team ID
+#      ASC_KEY_ID         App Store Connect API key ID
+#      ASC_ISSUER_ID      App Store Connect API issuer ID
+#      ASC_KEY_P8_BASE64  the .p8 API key file, base64-encoded
+#    The API key needs the "App Manager" role. Signing is automatic (Xcode creates the certificate/profile).
+name: iOS build
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      upload_to_app_store:
+        description: "Sign and upload to App Store Connect (TestFlight)"
+        type: boolean
+        default: false
+
+jobs:
+  build:
+    # Apple requires apps uploaded to the App Store to be built with the latest Xcode / iOS SDK.
+    runs-on: macos-26
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - name: Show Xcode version
+        run: xcodebuild -version
+      - name: Install XcodeGen
+        run: brew install xcodegen
+      - name: Generate Xcode project
+        run: xcodegen generate
+      - name: Build (unsigned, device)
+        run: |
+          xcodebuild \
+            -project KBKCam.xcodeproj -scheme KBKCam -configuration Release \
+            -sdk iphoneos -destination 'generic/platform=iOS' -derivedDataPath build \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \
+            build
+      - name: Package unsigned IPA
+        run: |
+          mkdir -p Payload
+          cp -R build/Build/Products/Release-iphoneos/KBKCam.app Payload/
+          zip -qr KBK-CAM-unsigned.ipa Payload
+      - uses: actions/upload-artifact@v4
+        with:
+          name: KBK-CAM-iOS-unsigned
+          path: KBK-CAM-unsigned.ipa
+
+  appstore:
+    if: github.event_name == 'workflow_dispatch' && inputs.upload_to_app_store
+    needs: build
+    runs-on: macos-26
+    timeout-minutes: 60
+    env:
+      TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+      ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+      ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install XcodeGen
+        run: brew install xcodegen
+      - name: Generate Xcode project
+        run: xcodegen generate
+      - name: Write App Store Connect API key
+        env:
+          ASC_KEY_P8_BASE64: ${{ secrets.ASC_KEY_P8_BASE64 }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/keys"
+          echo "$ASC_KEY_P8_BASE64" | base64 --decode > "$RUNNER_TEMP/keys/AuthKey.p8"
+      - name: Archive (signed, automatic signing)
+        run: |
+          xcodebuild \
+            -project KBKCam.xcodeproj -scheme KBKCam -configuration Release \
+            -destination 'generic/platform=iOS' -archivePath "$RUNNER_TEMP/KBKCam.xcarchive" \
+            -allowProvisioningUpdates \
+            -authenticationKeyPath "$RUNNER_TEMP/keys/AuthKey.p8" \
+            -authenticationKeyID "$ASC_KEY_ID" -authenticationKeyIssuerID "$ASC_ISSUER_ID" \
+            DEVELOPMENT_TEAM="$TEAM_ID" CODE_SIGN_STYLE=Automatic \
+            CURRENT_PROJECT_VERSION="${{ github.run_number }}" \
+            archive
+      - name: Upload to App Store Connect
+        run: |
+          sed "s/__TEAM_ID__/$TEAM_ID/" ExportOptions.plist > "$RUNNER_TEMP/ExportOptions.plist"
+          xcodebuild -exportArchive \
+            -archivePath "$RUNNER_TEMP/KBKCam.xcarchive" \
+            -exportOptionsPlist "$RUNNER_TEMP/ExportOptions.plist" \
+            -exportPath "$RUNNER_TEMP/export" \
+            -allowProvisioningUpdates \
+            -authenticationKeyPath "$RUNNER_TEMP/keys/AuthKey.p8" \
+            -authenticationKeyID "$ASC_KEY_ID" -authenticationKeyIssuerID "$ASC_ISSUER_ID"
+      - name: Remove API key
+        if: always()
+        run: rm -rf "$RUNNER_TEMP/keys"
